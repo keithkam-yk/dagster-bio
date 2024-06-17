@@ -1,27 +1,20 @@
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 from dagster import (
     AssetExecutionContext,
-    AssetKey,
     AssetSelection,
-    DagsterEventType,
-    EventRecordsFilter,
     MaterializeResult,
     MetadataValue,
-    RunRequest,
-    SensorEvaluationContext,
-    SensorResult,
     asset,
-    DynamicPartitionsDefinition,
     define_asset_job,
-    sensor,
 )
 from dagster_docker import execute_docker_container
 
-DATA_VOLUME_ROOT = Path("data")
+from dagster_bio.metadata import get_metadata
+from dagster_bio.partitions import source_partition_def
 
-source_partition_def = DynamicPartitionsDefinition(name="source")
+DATA_VOLUME_ROOT = Path("data")
 
 
 @asset(partitions_def=source_partition_def)
@@ -95,38 +88,6 @@ def asset_c(context: AssetExecutionContext, asset_b):
         context.log.info(asset_b_metadata["path"].text)
 
 
-def get_metadata(context, asset_key, partition_key) -> Optional[dict[str, Any]]:
-    return context.instance.get_event_records(
-        event_records_filter=EventRecordsFilter(
-            event_type=DagsterEventType.ASSET_MATERIALIZATION,
-            asset_key=AssetKey(asset_key),
-            asset_partitions=[partition_key],
-        ),
-        limit=1,
-    )[0].asset_materialization.metadata
-
-
 asset_job = define_asset_job(
     "asset_job", AssetSelection.assets("source_a"), partitions_def=source_partition_def
 )
-
-
-@sensor(job=asset_job)
-def source_sensor(context: SensorEvaluationContext):
-    new_source_partitions = [
-        source_name
-        for source_name in os.listdir("data/source_a")
-        if not source_partition_def.has_partition_key(
-            source_name, dynamic_partitions_store=context.instance
-        )
-    ]
-
-    return SensorResult(
-        run_requests=[
-            RunRequest(partition_key=img_filename)
-            for img_filename in new_source_partitions
-        ],
-        dynamic_partitions_requests=[
-            source_partition_def.build_add_request(new_source_partitions)
-        ],
-    )
