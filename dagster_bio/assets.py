@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from typing import Optional
 from dagster import (
     AssetExecutionContext,
     AssetSelection,
@@ -58,12 +57,13 @@ def asset_b(context: AssetExecutionContext, source_a):
     execute_docker_container(
         context=context,
         image="asset_b:latest",
-        env_vars=[f"{k}={v}" for k, v in env_vars.items()],
+        env_vars=docker_format_env_vars(env_vars),
         container_kwargs={"volumes": [f"{abs_data_path}:/data"]},
     )
 
     # read from output file path and log
-    with open(env_vars["OUTPUT_FILE_PATH"][1:], "r") as f:  # [1:] to remove leading /
+    # [1:] to remove leading / from path to convert it to a relative path
+    with open(env_vars["OUTPUT_FILE_PATH"][1:], "r") as f:
         contents = f.read()
 
     context.log.info(f"Output file contents: {contents}")
@@ -74,6 +74,10 @@ def asset_b(context: AssetExecutionContext, source_a):
             "path": env_vars["OUTPUT_FILE_PATH"],
         }
     )
+
+
+def docker_format_env_vars(env_vars: dict[str, str]) -> list[str]:
+    return [f"{k}={v}" for k, v in env_vars.items()]
 
 
 @asset(partitions_def=source_partition_def)
