@@ -1,0 +1,15 @@
+# Use a base image
+FROM alpine:latest
+
+# Install necessary packages
+RUN apk add --no-cache bash coreutils
+
+# Define environment variables for the input and output file paths
+ENV INPUT_FILE_PATH=""
+ENV OUTPUT_FILE_PATH=""
+
+# Set the working directory to /data, which can be mounted as a volume
+WORKDIR /data
+
+# Command to capitalize the content of the input file and write it to the specified output file
+CMD cat "${INPUT_FILE_PATH}" | tr '[:lower:]' '[:upper:]' > "${OUTPUT_FILE_PATH}"
