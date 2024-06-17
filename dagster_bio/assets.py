@@ -1,8 +1,14 @@
 import os
 from pathlib import Path
+from typing import Any, Optional
 from dagster import (
     AssetExecutionContext,
+    AssetKey,
     AssetSelection,
+    DagsterEventType,
+    EventRecordsFilter,
+    MaterializeResult,
+    MetadataValue,
     RunRequest,
     SensorEvaluationContext,
     SensorResult,
@@ -13,7 +19,7 @@ from dagster import (
 )
 from dagster_docker import execute_docker_container
 
-DATA_VOLUME_ROOT = "data/"
+DATA_VOLUME_ROOT = Path("data")
 
 source_partition_def = DynamicPartitionsDefinition(name="source")
 
@@ -23,8 +29,8 @@ def source_a(context: AssetExecutionContext):
     context.log.info(f"Loading source_a partition {context.partition_key}")
 
     # Load the data from the partition as str
-    rel_path = f"source_a/{context.partition_key}"
-    path = DATA_VOLUME_ROOT + rel_path
+    rel_path = Path("source_a") / context.partition_key
+    path = DATA_VOLUME_ROOT / rel_path
     with open(path, "r") as f:
         contents = f.read()
 
@@ -34,8 +40,8 @@ def source_a(context: AssetExecutionContext):
     return {
         "partition_key": context.partition_key,
         "contents": contents,
-        "path": path,
-        "rel_path": rel_path,
+        "path": str(path),
+        "rel_path": str(rel_path),
     }
 
 
@@ -45,11 +51,11 @@ def asset_b(context: AssetExecutionContext, source_a):
 
     context.log.info(source_a)
 
-    input_file_env_var = "INPUT_FILE_PATH=/" + source_a["path"]
-    output_file_env_var = (
-        "OUTPUT_FILE_PATH=/" + DATA_VOLUME_ROOT + f"asset_b/{context.partition_key}"
-    )
-    context.log.info(f"Setting env vars: {input_file_env_var}, {output_file_env_var}")
+    env_vars = {
+        "INPUT_FILE_PATH": f'/{source_a["path"]}',
+        "OUTPUT_FILE_PATH": f"/{DATA_VOLUME_ROOT/'asset_b'/context.partition_key}",
+    }
+    context.log.info(f"Setting env vars: {env_vars}")
 
     cwd = Path(os.getcwd())
     abs_data_path = cwd / DATA_VOLUME_ROOT
@@ -59,9 +65,45 @@ def asset_b(context: AssetExecutionContext, source_a):
     execute_docker_container(
         context=context,
         image="asset_b:latest",
-        env_vars=[input_file_env_var, output_file_env_var],
+        env_vars=[f"{k}={v}" for k, v in env_vars.items()],
         container_kwargs={"volumes": [f"{abs_data_path}:/data"]},
     )
+
+    # read from output file path and log
+    with open(env_vars["OUTPUT_FILE_PATH"][1:], "r") as f:  # [1:] to remove leading /
+        contents = f.read()
+
+    context.log.info(f"Output file contents: {contents}")
+    return MaterializeResult(
+        metadata={
+            "length": len(contents),
+            "preview": MetadataValue.md(contents),
+            "path": env_vars["OUTPUT_FILE_PATH"],
+        }
+    )
+
+
+@asset(partitions_def=source_partition_def)
+def asset_c(context: AssetExecutionContext, asset_b):
+    context.log.info(f"Asset C partition {context.partition_key}")
+
+    asset_b_metadata = get_metadata(
+        context, asset_key="asset_b", partition_key=context.partition_key
+    )
+    context.log.info(asset_b_metadata)
+    if asset_b_metadata is not None:
+        context.log.info(asset_b_metadata["path"].text)
+
+
+def get_metadata(context, asset_key, partition_key) -> Optional[dict[str, Any]]:
+    return context.instance.get_event_records(
+        event_records_filter=EventRecordsFilter(
+            event_type=DagsterEventType.ASSET_MATERIALIZATION,
+            asset_key=AssetKey(asset_key),
+            asset_partitions=[partition_key],
+        ),
+        limit=1,
+    )[0].asset_materialization.metadata
 
 
 asset_job = define_asset_job(
