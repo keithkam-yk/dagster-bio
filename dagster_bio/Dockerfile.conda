@@ -1,12 +1,14 @@
-FROM mambaorg/micromamba:latest
+# Dockerfile.conda
+FROM mambaorg/micromamba:0.23.1
 
 ARG CONDA_DEPENDENCIES
 
-RUN micromamba create -n conda_env 
+# Create and activate the conda environment
+RUN micromamba create --name conda_env ${CONDA_DEPENDENCIES} && \
+    micromamba clean --all --yes
 
-RUN eval "$(micromamba shell hook --shell=bash)" && \
-    micromamba activate conda_env && \
-    echo "Installing dependencies: $CONDA_DEPENDENCIES" && \
-    micromamba install -y -n conda_env $CONDA_DEPENDENCIES
+# Set the shell
+SHELL ["micromamba", "run", "-n", "conda_env", "/bin/bash", "-c"]
 
-ENV PATH /opt/conda/envs/conda_env/bin:$PATH
+# Set entrypoint
+ENTRYPOINT ["micromamba", "run", "-n", "conda_env"]
