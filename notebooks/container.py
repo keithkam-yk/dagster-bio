@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import logging
 from subprocess_helper import run_subprocess
 
@@ -17,12 +17,15 @@ class Dependency(BaseModel):
 
 
 class CondaImage(BaseModel):
-    image_name: str
-    image_version: str
+    registry: Optional[str] = None
+    repository: str
+    tag: str
     dependencies: List[Dependency]
 
     def __str__(self):
-        return f"{self.image_name}:{self.image_version}"
+        if self.registry:
+            return f"{self.registry}/{self.repository}:{self.tag}"
+        return f"{self.repository}:{self.tag}"
 
     def get_docker_build_cmd(self, cache=True):
         if not self.dependencies:
@@ -33,7 +36,7 @@ class CondaImage(BaseModel):
             "build",
             "--progress=plain",
             "-t",
-            f"{self.image_name}:{self.image_version}",
+            f"{self.repository}:{self.tag}",
             "-f",
             "dagster_bio/Dockerfile.conda",
         ]
@@ -53,3 +56,5 @@ class CondaImage(BaseModel):
         docker_build_cmd = self.get_docker_build_cmd(cache=cache)
 
         return run_subprocess(docker_build_cmd, logger)
+
+    # TODO: Add a method to push the image to a registry
