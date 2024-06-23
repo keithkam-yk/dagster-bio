@@ -1,15 +1,10 @@
 from pydantic import BaseModel
-import subprocess
-from typing import Any, List
+from typing import List
 import logging
+from subprocess_helper import run_subprocess
 
 
 logger = logging.getLogger(__name__)
-
-
-def read_output(process: subprocess.Popen[Any], logger: logging.Logger) -> None:
-    for line in process.stdout:
-        logger.info(line.strip())
 
 
 class Dependency(BaseModel):
@@ -25,7 +20,7 @@ class CondaImage(BaseModel):
     image_name: str
     image_version: str
     dependencies: List[Dependency]
-    
+
     def __str__(self):
         return f"{self.image_name}:{self.image_version}"
 
@@ -58,24 +53,3 @@ class CondaImage(BaseModel):
         docker_build_cmd = self.get_docker_build_cmd(cache=cache)
 
         return run_subprocess(docker_build_cmd, logger)
-
-
-def run_subprocess(cmd: List[str], logger: logging.Logger) -> int:
-    try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-        )
-
-        read_output(process, logger)
-
-        return_code = process.wait()
-        return return_code
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error running command: {e}")
-        return e.returncode
