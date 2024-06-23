@@ -1,0 +1,12 @@
+FROM mambaorg/micromamba:0.25.1
+
+ARG CONDA_DEPENDENCIES
+
+RUN micromamba create -n conda_env 
+
+RUN eval "$(micromamba shell hook --shell=bash)" && \
+    micromamba activate conda_env && \
+    echo "Installing dependencies: $CONDA_DEPENDENCIES" && \
+    micromamba install -y -n conda_env $CONDA_DEPENDENCIES
+
+ENV PATH /opt/conda/envs/conda_env/bin:$PATH
